@@ -45,7 +45,7 @@ buildPropensityModel <- function(covariateData,
       startingVariance = priorVariance,
       tolerance = 2e-07,
       cvRepetitions = 10,
-      threads = parallel::detectCores() - 1
+      threads = max(1, parallel::detectCores() - 1)
     )
   }
 
@@ -98,20 +98,36 @@ buildPropensityModel <- function(covariateData,
 #'
 #' @param propensityScores Vector of propensity scores
 #' @param treatment Binary treatment indicator
+#' @param epsilon Small value used to truncate propensity scores away from 0 and 1
 #'
 #' @return Vector of overlap weights
 #' @export
-calculateOverlapWeights <- function(propensityScores, treatment) {
+#'
+#' @examples
+#' set.seed(1)
+#' n <- 1000
+#' treatment <- rbinom(n, 1, 0.4)
+#' propensityScores <- pmin(pmax(rbeta(n, 2, 5), 1e-6), 1 - 1e-6)
+#' w <- calculateOverlapWeights(propensityScores, treatment)
+#' summary(w)
+calculateOverlapWeights <- function(propensityScores, treatment, epsilon = 1e-6) {
 
   checkmate::assertNumeric(propensityScores, lower = 0, upper = 1)
   checkmate::assertNumeric(treatment, lower = 0, upper = 1)
+  checkmate::assertNumber(epsilon, lower = 0, finite = TRUE)
 
   message("Calculating overlap weights...")
 
+  # Truncate propensity scores away from 0 and 1 to avoid zero weights
+  ps <- pmin(pmax(propensityScores, epsilon), 1 - epsilon)
+  if (any(ps != propensityScores)) {
+    message(sprintf("Truncated propensity scores to [%.2e, %.2e]", epsilon, 1 - epsilon))
+  }
+
   # Overlap weights: w = (1-ps) for treated, ps for controls
   weights <- ifelse(treatment == 1,
-                    1 - propensityScores,
-                    propensityScores)
+                    1 - ps,
+                    ps)
 
   # Normalize weights within treatment groups
   weightsNormalized <- weights
@@ -131,27 +147,44 @@ calculateOverlapWeights <- function(propensityScores, treatment) {
 #' @param propensityScores Vector of propensity scores
 #' @param treatment Binary treatment indicator
 #' @param stabilized Logical; use stabilized weights (default: TRUE)
+#' @param epsilon Small value used to truncate propensity scores away from 0 and 1
 #'
 #' @return Vector of IPTW weights
 #' @export
-calculateIPTW <- function(propensityScores, treatment, stabilized = TRUE) {
+#'
+#' @examples
+#' set.seed(1)
+#' n <- 1000
+#' treatment <- rbinom(n, 1, 0.4)
+#' propensityScores <- pmin(pmax(rbeta(n, 2, 5), 1e-6), 1 - 1e-6)
+#' w <- calculateIPTW(propensityScores, treatment, stabilized = TRUE)
+#' summary(w)
+calculateIPTW <- function(propensityScores, treatment, stabilized = TRUE, epsilon = 1e-6) {
 
   checkmate::assertNumeric(propensityScores, lower = 0, upper = 1)
   checkmate::assertNumeric(treatment, lower = 0, upper = 1)
+  checkmate::assertFlag(stabilized)
+  checkmate::assertNumber(epsilon, lower = 0, finite = TRUE)
 
   message("Calculating IPTW weights...")
 
+  # Truncate propensity scores away from 0 and 1 to avoid infinite weights
+  ps <- pmin(pmax(propensityScores, epsilon), 1 - epsilon)
+  if (any(ps != propensityScores)) {
+    message(sprintf("Truncated propensity scores to [%.2e, %.2e]", epsilon, 1 - epsilon))
+  }
+
   # Standard IPTW
   weights <- ifelse(treatment == 1,
-                    1 / propensityScores,
-                    1 / (1 - propensityScores))
+                    1 / ps,
+                    1 / (1 - ps))
 
   # Stabilized weights
   if (stabilized) {
     pTreatment <- mean(treatment)
     weights <- ifelse(treatment == 1,
-                      pTreatment / propensityScores,
-                      (1 - pTreatment) / (1 - propensityScores))
+                      pTreatment / ps,
+                      (1 - pTreatment) / (1 - ps))
   }
 
   # Trim extreme weights (optional - at 99th percentile)
@@ -176,6 +209,10 @@ calculateAUC <- function(predictions, labels) {
 
   n_pos <- sum(labels == 1)
   n_neg <- sum(labels == 0)
+
+  if (n_pos == 0 || n_neg == 0) {
+    return(NA_real_)
+  }
 
   tp <- cumsum(labels == 1)
   fp <- cumsum(labels == 0)

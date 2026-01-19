@@ -11,7 +11,8 @@ imputeControlIndexDates(
   imputationMethod = "risk_set_sampling",
   matchingWindow = 30,
   minObservationPrior = 365,
-  maxControlsPerTreated = 5
+  maxControlsPerTreated = 5,
+  seed = NULL
 )
 }
 \arguments{
@@ -34,6 +35,8 @@ imputeControlIndexDates(
 \item{minObservationPrior}{Minimum days of observation before index (default: 365)}
 
 \item{maxControlsPerTreated}{Maximum controls per treated subject (default: 5)}
+
+\item{seed}{Optional random seed for reproducible sampling. Use \code{NULL} to not set a seed (default: \code{NULL}).}
 }
 \value{
 A data frame with imputed index dates for control cohort
@@ -44,12 +47,22 @@ that lack a natural index date, addressing the key challenge in SCA construction
 }
 \examples{
 \dontrun{
+set.seed(42)
 controlWithIndex <- imputeControlIndexDates(
   syTrialConnection = syTrialConn,
   treatmentCohortId = 1,
   controlCohortId = 2,
   imputationMethod = "risk_set_sampling",
   matchingWindow = 30
+)
+
+controlWithIndex2 <- imputeControlIndexDates(
+  syTrialConnection = syTrialConn,
+  treatmentCohortId = 1,
+  controlCohortId = 2,
+  imputationMethod = "risk_set_sampling",
+  matchingWindow = 30,
+  seed = 42
 )
 }
 }

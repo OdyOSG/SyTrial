@@ -18,16 +18,32 @@
 #' @export
 #'
 #' @examples
-#' \dontrun{
-#' tmleResult <- performTMLE(
-#'   data = analysisData,
-#'   treatment = "treatment",
-#'   outcome = "outcome",
-#'   covariates = covariateNames,
-#'   family = "binomial",
-#'   Q.SL.library = c("SL.glm", "SL.glmnet", "SL.ranger"),
-#'   g.SL.library = c("SL.glm", "SL.glmnet")
+#' set.seed(123)
+#' n <- 50
+#' analysisData <- data.frame(
+#'   W1 = rnorm(n),
+#'   W2 = rbinom(n, 1, 0.5)
 #' )
+#' analysisData$treatment <- rbinom(n, 1, plogis(0.2 + 0.4 * analysisData$W1 - 0.3 * analysisData$W2))
+#' analysisData$outcome <- rbinom(
+#'   n, 1,
+#'   plogis(-0.1 + 0.8 * analysisData$treatment + 0.3 * analysisData$W1 + 0.2 * analysisData$W2)
+#' )
+#' covariateNames <- c("W1", "W2")
+#'
+#' if (requireNamespace("tmle", quietly = TRUE) &&
+#'     requireNamespace("SuperLearner", quietly = TRUE)) {
+#'   tmleResult <- performTMLE(
+#'     data = analysisData,
+#'     treatment = "treatment",
+#'     outcome = "outcome",
+#'     covariates = covariateNames,
+#'     family = "binomial",
+#'     Q.SL.library = c("SL.glm"),
+#'     g.SL.library = c("SL.glm"),
+#'     cvQinit = FALSE
+#'   )
+#'   tmleResult$ate
 #' }
 performTMLE <- function(data,
                         treatment,
@@ -64,7 +80,12 @@ performTMLE <- function(data,
   # Handle missing data
   completeIdx <- complete.cases(cbind(A, Y, W))
   if (sum(!completeIdx) > 0) {
-    ParallelLogger::logWarn(sprintf("Removing %d rows with missing data", sum(!completeIdx)))
+    msg <- sprintf("Removing %d rows with missing data", sum(!completeIdx))
+    if (requireNamespace("ParallelLogger", quietly = TRUE)) {
+      ParallelLogger::logWarn(msg)
+    } else {
+      warning(msg, call. = FALSE)
+    }
     A <- A[completeIdx]
     Y <- Y[completeIdx]
     W <- W[completeIdx, , drop = FALSE]
@@ -86,7 +107,12 @@ performTMLE <- function(data,
       verbose = FALSE
     )
   }, error = function(e) {
-    ParallelLogger::logError(sprintf("TMLE estimation failed: %s", e$message))
+    msg <- sprintf("TMLE estimation failed: %s", e$message)
+    if (requireNamespace("ParallelLogger", quietly = TRUE)) {
+      ParallelLogger::logError(msg)
+    } else {
+      message(msg)
+    }
     return(NULL)
   })
 
@@ -139,18 +165,42 @@ performTMLE <- function(data,
 #'
 #' @return A G-computation result object
 #' @export
+#'
+#' @examples
+#' set.seed(123)
+#' n <- 200
+#' analysisData <- data.frame(
+#'   W1 = rnorm(n),
+#'   W2 = rbinom(n, 1, 0.5)
+#' )
+#' analysisData$treatment <- rbinom(n, 1, plogis(0.2 + 0.4 * analysisData$W1 - 0.3 * analysisData$W2))
+#' analysisData$outcome <- rbinom(
+#'   n, 1,
+#'   plogis(-0.1 + 0.8 * analysisData$treatment + 0.3 * analysisData$W1 + 0.2 * analysisData$W2)
+#' )
+#'
+#' res <- performGComputation(
+#'   data = analysisData,
+#'   treatment = "treatment",
+#'   outcome = "outcome",
+#'   covariates = c("W1", "W2"),
+#'   family = "binomial",
+#'   nBootstrap = 20
+#' )
+#' res$ate
 performGComputation <- function(data,
                                 treatment,
                                 outcome,
                                 covariates,
                                 family = "binomial",
                                 outcomeModel = NULL,
-                                nBootstrap = 1000) {
+                                nBootstrap = 200) {
 
   checkmate::assertDataFrame(data)
   checkmate::assertChoice(treatment, colnames(data))
   checkmate::assertChoice(outcome, colnames(data))
   checkmate::assertSubset(covariates, colnames(data))
+  checkmate::assertInt(nBootstrap, lower = 1)
 
   message("Performing G-Computation...")
 

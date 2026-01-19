@@ -4,12 +4,15 @@
 \alias{calculateOverlapWeights}
 \title{Calculate Overlap Weights}
 \usage{
-calculateOverlapWeights(propensityScores, treatment)
+calculateOverlapWeights(propensityScores, treatment, epsilon = 1e-06)
 }
 \arguments{
 \item{propensityScores}{Vector of propensity scores}
 
 \item{treatment}{Binary treatment indicator}
+
+\item{epsilon}{Small positive value used to bound propensity scores away from 0 and 1
+to avoid infinite or unstable weights.}
 }
 \value{
 Vector of overlap weights
@@ -17,4 +20,14 @@ Vector of overlap weights
 \description{
 Calculates overlap weights (Li et al. 2018) which optimize balance
 and precision by focusing on the population with equipoise.
+}
+
+\examples{
+set.seed(123)
+n <- 200
+treatment <- rbinom(n, 1, 0.5)
+propensityScores <- pmin(pmax(runif(n), 1e-3), 1 - 1e-3)
+
+w <- calculateOverlapWeights(propensityScores, treatment, epsilon = 1e-6)
+head(w)
 }

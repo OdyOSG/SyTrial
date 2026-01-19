@@ -15,14 +15,61 @@
 #' @param outcomeVariable Name of outcome variable
 #' @param timeVariable Name of time variable (for survival outcomes)
 #' @param eventVariable Name of event indicator (for survival outcomes)
+#' @param outcomeData A data frame containing outcomes merged by subjectId.
+#'   Must include \code{subjectId} and the requested \code{outcomeVariable}
+#'   (and \code{timeVariable}/\code{eventVariable} for survival outcomes).
+#'   Note: this function does not currently implement outcome extraction from the
+#'   database; outcomes must be provided via \code{outcomeData}.
 #' @param outputDir Directory for diagnostic outputs
 #'
 #' @return A SyTrialResult object
 #' @export
 #'
 #' @examples
+#' # Minimal runnable example (no DB): demonstrate downstream steps on simulated data
+#' set.seed(1)
+#' n <- 200
+#' x1 <- rnorm(n)
+#' x2 <- rbinom(n, 1, 0.5)
+#' treatment <- rbinom(n, 1, plogis(-0.2 + 0.7 * x1 - 0.4 * x2))
+#' outcome <- rbinom(n, 1, plogis(-1 + 0.8 * treatment + 0.3 * x1))
+#' analysisData <- data.frame(treatment = treatment, outcome = outcome, x1 = x1, x2 = x2)
+#'
+#' ps <- stats::glm(treatment ~ x1 + x2, data = analysisData, family = stats::binomial()) |>
+#'   stats::fitted()
+#'
+#' weights <- calculateOverlapWeights(ps, treatment)
+#'
+#' tmleRes <- performTMLE(
+#'   data = analysisData,
+#'   treatment = "treatment",
+#'   outcome = "outcome",
+#'   covariates = c("x1", "x2"),
+#'   family = "binomial"
+#' )
+#'
+#' gcompRes <- performGComputation(
+#'   data = analysisData,
+#'   treatment = "treatment",
+#'   outcome = "outcome",
+#'   covariates = c("x1", "x2"),
+#'   family = "binomial"
+#' )
+#'
+#' iptwRes <- performIPTWAnalysis(
+#'   data = analysisData,
+#'   treatment = "treatment",
+#'   outcome = "outcome",
+#'   weights = weights,
+#'   family = stats::binomial()
+#' )
+#'
+#' tmleRes$ate
+#' gcompRes$ate
+#' iptwRes$ate
+#'
 #' \dontrun{
-#' # Connect to database
+#' # Full pipeline example (requires DB + cohorts + covariate extraction)
 #' syTrialConn <- createSyTrialConnection(
 #'   connectionDetails = connectionDetails,
 #'   cdmDatabaseSchema = "cdm_synpuf",
@@ -30,7 +77,14 @@
 #'   cohortTable = "cohort"
 #' )
 #'
-#' # Run analysis
+#' # Provide outcome data explicitly (illustrative: replace with real outcomes)
+#' outcomeData <- data.frame(
+#'   subjectId = 1:1000,
+#'   death = rbinom(1000, 1, 0.1),
+#'   time_to_event = rexp(1000, rate = 0.05),
+#'   event_indicator = rbinom(1000, 1, 0.8)
+#' )
+#'
 #' result <- runSyTrialAnalysis(
 #'   syTrialConnection = syTrialConn,
 #'   treatmentCohortId = 1,
@@ -42,14 +96,12 @@
 #'   outcomeVariable = "death",
 #'   timeVariable = "time_to_event",
 #'   eventVariable = "event_indicator",
+#'   outcomeData = outcomeData,
 #'   outputDir = "./sytrial_results"
 #' )
 #'
-#' # View results
 #' print(result)
 #' summary(result)
-#'
-#' # Disconnect
 #' disconnectSyTrial(syTrialConn)
 #' }
 runSyTrialAnalysis <- function(syTrialConnection,
@@ -63,6 +115,7 @@ runSyTrialAnalysis <- function(syTrialConnection,
                                outcomeVariable = NULL,
                                timeVariable = NULL,
                                eventVariable = NULL,
+                               outcomeData = NULL,
                                outputDir = "./sytrial_results") {
 
   # Input validation
@@ -77,9 +130,9 @@ runSyTrialAnalysis <- function(syTrialConnection,
   if (!dir.exists(outputDir)) {
     dir.create(outputDir, recursive = TRUE)
   }
-  message("=" %s% strrep("=", 60))
+  message(paste0("=", strrep("=", 60)))
   message("SyTrial Analysis Pipeline Started")
-  message("=" %s% strrep("=", 60))
+  message(paste0("=", strrep("=", 60)))
 
   startTime <- Sys.time()
 
@@ -108,8 +161,13 @@ runSyTrialAnalysis <- function(syTrialConnection,
   # Step 3: Build propensity score model
   message("\n[Step 3/6] Building propensity score model...")
 
-  # Extract treatment indicator
-  treatment <- extractTreatmentIndicator(syTrialConnection, treatmentCohortId, controlWithIndex)
+  # Extract treatment indicator (aligned to covariateData rows)
+  subjectIds <- covariateData$covariates$rowId
+  treatment <- extractTreatmentIndicator(
+    syTrialConnection = syTrialConnection,
+    treatmentCohortId = treatmentCohortId,
+    subjectIds = subjectIds
+  )
 
   psModel <- buildPropensityModel(
     covariateData = covariateData,
@@ -140,7 +198,8 @@ runSyTrialAnalysis <- function(syTrialConnection,
     covariateData = covariateData,
     outcomeVariable = outcomeVariable,
     timeVariable = timeVariable,
-    eventVariable = eventVariable
+    eventVariable = eventVariable,
+    outcomeData = outcomeData
   )
 
   causalResult <- switch(
@@ -163,7 +222,8 @@ runSyTrialAnalysis <- function(syTrialConnection,
       data = analysisData,
       treatment = "treatment",
       outcome = outcomeVariable,
-      weights = weights
+      weights = weights,
+      family = if (outcomeType == "continuous") stats::gaussian() else stats::binomial()
     )
   )
 
@@ -218,18 +278,22 @@ runSyTrialAnalysis <- function(syTrialConnection,
   endTime <- Sys.time()
   executionTime <- difftime(endTime, startTime, units = "mins")
 
-  message("\n" %s% strrep("=", 60))
+  message(paste0("\n", strrep("=", 60)))
   message(sprintf("SyTrial Analysis Completed in %.2f minutes", executionTime))
-  message("=" %s% strrep("=", 60))
+  message(paste0("=", strrep("=", 60)))
 
-  ParallelLogger::unregisterLogger("DEFAULT_FILE_LOGGER")
+  try(ParallelLogger::unregisterLogger("DEFAULT_FILE_LOGGER"), silent = TRUE)
 
   return(result)
 }
 
 # Internal helper functions
 
-extractTreatmentIndicator <- function(syTrialConnection, treatmentCohortId, controlWithIndex) {
+extractTreatmentIndicator <- function(syTrialConnection, treatmentCohortId, subjectIds) {
+  checkmate::assertClass(syTrialConnection, "SyTrialConnection")
+  checkmate::assertInt(treatmentCohortId)
+  checkmate::assertVector(subjectIds, any.missing = FALSE)
+
   # Extract treatment subjects
   sqlTreatment <- "
     SELECT subject_id
@@ -246,38 +310,68 @@ extractTreatmentIndicator <- function(syTrialConnection, treatmentCohortId, cont
 
   sqlTreatment <- SqlRender::translate(sqlTreatment, targetDialect = syTrialConnection$dbms)
   treatmentSubjects <- DatabaseConnector::querySql(syTrialConnection$connection, sqlTreatment)
-  treatmentSubjects <- treatmentSubjects$SUBJECT_ID
 
-  # Create treatment indicator
-  allSubjects <- c(treatmentSubjects, controlWithIndex$subjectId)
-  treatment <- ifelse(allSubjects %in% treatmentSubjects, 1, 0)
+  # Ensure consistent column naming across DBMS / DatabaseConnector settings
+  treatmentSubjects <- SqlRender::snakeCaseToCamelCase(treatmentSubjects)
+  if (!("subjectId" %in% names(treatmentSubjects))) {
+    stop("Expected subjectId column in treatment cohort query result.")
+  }
 
-  return(treatment)
+  treatedSubjectIds <- treatmentSubjects$subjectId
+  treatedSubjectIds <- treatedSubjectIds[!is.na(treatedSubjectIds)]
+
+  # Return indicator aligned to subjectIds order
+  return(as.integer(subjectIds %in% treatedSubjectIds))
 }
 
 prepareAnalysisData <- function(syTrialConnection, treatmentCohortId, controlWithIndex,
-                                covariateData, outcomeVariable, timeVariable, eventVariable) {
+                                covariateData, outcomeVariable, timeVariable, eventVariable,
+                                outcomeData = NULL) {
 
   # Extract covariates as data frame
-  covMatrix <- as.matrix(covariateData$covariates)
-  covDF <- as.data.frame(covMatrix)
+  # Note: this converts to a (potentially large) dense matrix; for large studies consider
+  # using sparse workflows end-to-end.
+  covSparse <- FeatureExtraction::covariateDataToSparseMatrix(covariateData)
+  covDF <- as.data.frame(as.matrix(covSparse))
 
-  # Add treatment indicator
-  treatment <- extractTreatmentIndicator(syTrialConnection, treatmentCohortId, controlWithIndex)
-  covDF$treatment <- treatment
+  # Add subject IDs aligned to covariate rows (rowId are the subject IDs)
+  covDF$subjectId <- covariateData$covariates$rowId
 
-  # Add outcome variables (placeholder - would need actual extraction logic)
-  # This is simplified for demonstration
-  if (!is.null(outcomeVariable)) {
-    covDF[[outcomeVariable]] <- sample(0:1, nrow(covDF), replace = TRUE)  # Placeholder
+  # Add treatment indicator aligned to covariate rows
+  covDF$treatment <- extractTreatmentIndicator(
+    syTrialConnection = syTrialConnection,
+    treatmentCohortId = treatmentCohortId,
+    subjectIds = covDF$subjectId
+  )
+
+  # Outcome data must be provided explicitly
+  if (is.null(outcomeData)) {
+    stop("No outcomeData provided. Please supply outcomeData with at least subjectId and the requested outcome/time/event columns.")
+  }
+  checkmate::assertDataFrame(outcomeData)
+  checkmate::assertNames(names(outcomeData), must.include = "subjectId")
+
+  requiredCols <- c(outcomeVariable, timeVariable, eventVariable)
+  requiredCols <- requiredCols[!is.null(requiredCols)]
+  missingCols <- setdiff(requiredCols, names(outcomeData))
+  if (length(missingCols) > 0) {
+    stop(sprintf(
+      "outcomeData is missing required columns: %s",
+      paste(missingCols, collapse = ", ")
+    ))
   }
 
-  if (!is.null(timeVariable)) {
-    covDF[[timeVariable]] <- runif(nrow(covDF), 1, 365)  # Placeholder
-  }
+  covDF <- merge(covDF, outcomeData, by = "subjectId", all.x = TRUE, sort = FALSE)
 
-  if (!is.null(eventVariable)) {
-    covDF[[eventVariable]] <- sample(0:1, nrow(covDF), replace = TRUE)  # Placeholder
+  # Ensure outcome columns are present after merge
+  if (!is.null(outcomeVariable) && any(is.na(covDF[[outcomeVariable]]))) {
+    stop("Missing outcome values after merging outcomeData. Ensure outcomeData covers all subjects in the covariate data.")
+  }
+  if (!is.null(timeVariable) && any(is.na(covDF[[timeVariable]]))) {
+    stop("Missing time values after merging outcomeData. Ensure outcomeData covers all subjects in the covariate data.")
+  }
+  if (!is.null(eventVariable) && any(is.na(covDF[[eventVariable]]))) {
+    stop("Missing event values after merging outcomeData. Ensure outcomeData covers all subjects in the covariate data.")
   }
 
   return(covDF)
@@ -304,14 +398,17 @@ performMatching <- function(propensityScores, treatment) {
   return(weights)
 }
 
-performIPTWAnalysis <- function(data, treatment, outcome, weights) {
+performIPTWAnalysis <- function(data, treatment, outcome, weights, family = stats::binomial()) {
   # Weighted outcome regression
   formula <- as.formula(paste(outcome, "~", treatment))
 
-  fit <- glm(formula, data = data, weights = weights, family = binomial())
+  fit <- glm(formula, data = data, weights = weights, family = family)
 
   # Extract treatment effect
-  ate <- coef(fit)[treatment]
+  if (!(treatment %in% names(coef(fit)))) {
+    stop(sprintf("Treatment coefficient '%s' not found in model coefficients.", treatment))
+  }
+  ate <- unname(coef(fit)[treatment])
   se <- sqrt(vcov(fit)[treatment, treatment])
   ci <- ate + c(-1.96, 1.96) * se
   pValue <- 2 * pnorm(-abs(ate / se))
@@ -336,9 +433,9 @@ performIPTWAnalysis <- function(data, treatment, outcome, weights) {
 #' @export
 print.SyTrialResult <- function(x, ...) {
   cat("\n")
-  cat("=" %s% strrep("=", 60), "\n")
+  cat(paste0("=", strrep("=", 60)), "\n")
   cat("SyTrial Analysis Results\n")
-  cat("=" %s% strrep("=", 60), "\n\n")
+  cat(paste0("=", strrep("=", 60)), "\n\n")
 
   cat(sprintf("Treatment Cohort ID: %d\n", x$treatmentCohortId))
   cat(sprintf("Control Cohort ID: %d\n", x$controlCohortId))
@@ -365,7 +462,7 @@ print.SyTrialResult <- function(x, ...) {
   cat(sprintf("Output Directory: %s\n", x$outputDir))
 
   cat("\n")
-  cat("=" %s% strrep("=", 60), "\n")
+  cat(paste0("=", strrep("=", 60)), "\n")
 }
 
 #' Summary of SyTrial Result
@@ -389,5 +486,3 @@ summary.SyTrialResult <- function(object, ...) {
   cat(sprintf("  - %s\n", file.path(object$outputDir, "sytrial_result.rds")))
 }
 
-# String concatenation operator
-`%s%` <- function(x, y) paste0(x, y)

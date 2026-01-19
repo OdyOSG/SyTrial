@@ -43,6 +43,7 @@ createSyTrialConnection <- function(connectionDetails,
   message("Establishing database connection...")
 
   connection <- DatabaseConnector::connect(connectionDetails)
+  on.exit(DatabaseConnector::disconnect(connection), add = TRUE)
 
   message("Validating OMOP CDM structure...")
 
@@ -65,7 +66,7 @@ createSyTrialConnection <- function(connectionDetails,
 
   message("Connection established and validated successfully.")
 
-  structure(
+  conn <- structure(
     list(
       connection = connection,
       connectionDetails = connectionDetails,
@@ -77,6 +78,9 @@ createSyTrialConnection <- function(connectionDetails,
     ),
     class = "SyTrialConnection"
   )
+
+  on.exit(NULL, add = FALSE)
+  conn
 }
 
 #' Disconnect SyTrial Connection
@@ -85,6 +89,8 @@ createSyTrialConnection <- function(connectionDetails,
 #' @export
 disconnectSyTrial <- function(syTrialConnection) {
   checkmate::assertClass(syTrialConnection, "SyTrialConnection")
-  DatabaseConnector::disconnect(syTrialConnection$connection)
+
+  try(DatabaseConnector::disconnect(syTrialConnection$connection), silent = TRUE)
   message("Database connection closed.")
+  invisible(TRUE)
 }

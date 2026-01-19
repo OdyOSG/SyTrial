@@ -4,7 +4,7 @@
 \alias{calculateIPTW}
 \title{Calculate Inverse Probability of Treatment Weights (IPTW)}
 \usage{
-calculateIPTW(propensityScores, treatment, stabilized = TRUE)
+calculateIPTW(propensityScores, treatment, stabilized = TRUE, epsilon = 1e-06)
 }
 \arguments{
 \item{propensityScores}{Vector of propensity scores}
@@ -12,10 +12,21 @@ calculateIPTW(propensityScores, treatment, stabilized = TRUE)
 \item{treatment}{Binary treatment indicator}
 
 \item{stabilized}{Logical; use stabilized weights (default: TRUE)}
+
+\item{epsilon}{Numeric; small constant used to bound propensity scores away from 0 and 1 to avoid infinite/unstable weights (default: 1e-06).}
 }
 \value{
 Vector of IPTW weights
 }
 \description{
 Calculate Inverse Probability of Treatment Weights (IPTW)
+}
+\examples{
+set.seed(123)
+n <- 100
+treatment <- rbinom(n, 1, 0.5)
+propensityScores <- runif(n, min = 0.05, max = 0.95)
+
+w <- calculateIPTW(propensityScores, treatment, stabilized = TRUE, epsilon = 1e-6)
+head(w)
 }

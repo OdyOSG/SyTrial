@@ -35,3 +35,23 @@ A survminer ggsurvplot object
 \description{
 Generates Kaplan-Meier curves comparing treatment and synthetic control arms.
 }
+\examples{
+## Not run: 
+## library(survival)
+## library(survminer)
+## set.seed(1)
+## n <- 50
+## df <- data.frame(
+##   time = rexp(n, 0.1),
+##   event = rbinom(n, 1, 0.7),
+##   trt = sample(c("Treatment", "SyntheticControl"), n, replace = TRUE)
+## )
+## createKaplanMeierPlot(
+##   data = df,
+##   time = "time",
+##   event = "event",
+##   treatment = "trt",
+##   title = "Kaplan-Meier Survival Curves"
+## )
+## End(Not run)
+}
