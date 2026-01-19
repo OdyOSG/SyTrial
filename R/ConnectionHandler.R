@@ -79,7 +79,7 @@ createSyTrialConnection <- function(connectionDetails,
     class = "SyTrialConnection"
   )
 
-  on.exit(NULL, add = TRUE)
+  on.exit(NULL, add = FALSE)
   conn
 }
 
@@ -89,6 +89,8 @@ createSyTrialConnection <- function(connectionDetails,
 #' @export
 disconnectSyTrial <- function(syTrialConnection) {
   checkmate::assertClass(syTrialConnection, "SyTrialConnection")
-  DatabaseConnector::disconnect(syTrialConnection$connection)
+
+  try(DatabaseConnector::disconnect(syTrialConnection$connection), silent = TRUE)
   message("Database connection closed.")
+  invisible(TRUE)
 }
