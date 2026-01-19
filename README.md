@@ -1,5 +1,3 @@
-## 5. README.md
-
 # SyTrial: Synthetic Control Arm Construction Using OMOP CDM
 
 ## Overview
@@ -30,7 +28,7 @@ remotes::install_github("OdyOSG/SyTrial")
 
 ## Quick example (no database required)
 
-The example below simulates a treated vs control cohort, computes propensity-score-based weights, and runs TMLE and G-computation using SyTrial’s high-level helpers.
+The example below simulates a treated vs control cohort, computes propensity-score-based weights using SyTrial helpers, and runs TMLE and G-computation.
 
 ```r
 set.seed(1)
@@ -53,29 +51,35 @@ linpred <- with(
 )
 analysisData$outcome <- rbinom(n, 1, plogis(linpred))
 
-# Propensity score model (example)
-psFit <- glm(treatment ~ age + male + x1 + x2, family = binomial(), data = analysisData)
-analysisData$ps <- predict(psFit, type = "response")
+covariates <- c("age", "male", "x1", "x2")
 
-# Example weight calculations (IPTW + overlap)
-analysisData$iptw <- ifelse(analysisData$treatment == 1, 1 / analysisData$ps, 1 / (1 - analysisData$ps))
-analysisData$overlapW <- ifelse(analysisData$treatment == 1, 1 - analysisData$ps, analysisData$ps)
+# Calculate weights (helpers provided by SyTrial)
+analysisData$iptw <- calculateIPTW(
+  data = analysisData,
+  treatment = "treatment",
+  covariates = covariates
+)
+analysisData$overlapW <- calculateOverlapWeights(
+  data = analysisData,
+  treatment = "treatment",
+  covariates = covariates
+)
 
-# Run causal estimators (function names may differ by package version)
+# Run causal estimators
 tmleResult <- performTMLE(
   data = analysisData,
-  treatmentColumn = "treatment",
-  outcomeColumn = "outcome",
-  covariateColumns = c("age", "male", "x1", "x2"),
-  weightsColumn = "iptw"
+  treatment = "treatment",
+  outcome = "outcome",
+  covariates = covariates,
+  weights = analysisData$iptw
 )
 
 gcompResult <- performGComputation(
   data = analysisData,
-  treatmentColumn = "treatment",
-  outcomeColumn = "outcome",
-  covariateColumns = c("age", "male", "x1", "x2"),
-  weightsColumn = "overlapW"
+  treatment = "treatment",
+  outcome = "outcome",
+  covariates = covariates,
+  weights = analysisData$overlapW
 )
 
 tmleResult
@@ -97,10 +101,17 @@ outcomeData <- data.frame(
   timeAtRiskEnd   = as.Date(c("2020-12-31", "2020-12-31", "2020-12-31"))
 )
 
-# Example: passing outcomeData into the analysis step (function signature may vary)
-result <- runSyTrial(
-  cohortData = cohortData,
-  covariateData = covariateData,
+# Run the full analysis (requires an OMOP CDM connection; signature may vary)
+# See `?runSyTrialAnalysis` for required arguments and defaults.
+```r
+## Not run:
+result <- runSyTrialAnalysis(
+  connectionDetails = connectionDetails,
+  cdmDatabaseSchema = cdmDatabaseSchema,
+  cohortDatabaseSchema = cohortDatabaseSchema,
+  cohortTable = cohortTable,
+  cohortIds = cohortIds,
   outcomeData = outcomeData
 )
+## End(Not run)
 ```
