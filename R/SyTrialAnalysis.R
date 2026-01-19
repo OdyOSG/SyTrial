@@ -433,9 +433,9 @@ performIPTWAnalysis <- function(data, treatment, outcome, weights, family = stat
 #' @export
 print.SyTrialResult <- function(x, ...) {
   cat("\n")
-  cat("=" %s% strrep("=", 60), "\n")
+  cat(paste0("=", strrep("=", 60)), "\n")
   cat("SyTrial Analysis Results\n")
-  cat("=" %s% strrep("=", 60), "\n\n")
+  cat(paste0("=", strrep("=", 60)), "\n\n")
 
   cat(sprintf("Treatment Cohort ID: %d\n", x$treatmentCohortId))
   cat(sprintf("Control Cohort ID: %d\n", x$controlCohortId))
@@ -462,7 +462,7 @@ print.SyTrialResult <- function(x, ...) {
   cat(sprintf("Output Directory: %s\n", x$outputDir))
 
   cat("\n")
-  cat("=" %s% strrep("=", 60), "\n")
+  cat(paste0("=", strrep("=", 60)), "\n")
 }
 
 #' Summary of SyTrial Result
