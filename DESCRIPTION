@@ -1,0 +1,46 @@
+Package: SyTrial
+Type: Package
+Title: Synthetic Control Arm Construction Using OMOP CDM and Advanced Causal Inference
+Version: 0.1.0
+Date: 2025-01-15
+Authors@R: c(
+    person("Alexander", "Aleksiayuk", 
+           email = "alexander_aleksiayuk@epam.com", 
+           role = c("aut", "cre"))
+    )
+Maintainer: Alexander Aleksiayuk <alexander_aleksiayuk@epam.com>
+Description: Constructs synthetic control arms from Real-World Data (RWD) stored 
+    in OMOP Common Data Model (CDM) databases. Implements advanced causal inference 
+    methods including Targeted Maximum Likelihood Estimation (TMLE), G-computation, 
+    and Super Learner ensembles. Handles scenarios where control cohorts lack defined 
+    index dates through intelligent imputation strategies. Integrates seamlessly with 
+    OHDSI HADES framework.
+License: Apache License 2.0
+Encoding: UTF-8
+LazyData: true
+Depends:
+    R (>= 4.0.0)
+Imports:
+    DatabaseConnector (>= 5.0.0),
+    SqlRender (>= 1.9.0),
+    FeatureExtraction (>= 3.2.0),
+    CohortMethod (>= 5.1.0),
+    Cyclops (>= 3.2.0),
+    tmle (>= 1.5.0),
+    SuperLearner (>= 2.0-28),
+    ggplot2 (>= 3.4.0),
+    tidyr (>= 1.3.0),
+    survival (>= 3.5-0),
+    survminer (>= 0.4.9),
+    ParallelLogger (>= 3.1.0),
+    checkmate (>= 2.1.0),
+    data.table (>= 1.14.0),
+    stats
+Suggests:
+    testthat (>= 3.0.0),
+    knitr (>= 1.42),
+    rmarkdown (>= 2.20),
+    xgboost (>= 1.7.0),
+    ranger (>= 0.14.0),
+    glmnet (>= 4.1-6)
+RoxygenNote: 7.3.2
