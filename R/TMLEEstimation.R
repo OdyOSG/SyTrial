@@ -145,12 +145,13 @@ performGComputation <- function(data,
                                 covariates,
                                 family = "binomial",
                                 outcomeModel = NULL,
-                                nBootstrap = 1000) {
+                                nBootstrap = 200) {
 
   checkmate::assertDataFrame(data)
   checkmate::assertChoice(treatment, colnames(data))
   checkmate::assertChoice(outcome, colnames(data))
   checkmate::assertSubset(covariates, colnames(data))
+  checkmate::assertInt(nBootstrap, lower = 1)
 
   message("Performing G-Computation...")
 
