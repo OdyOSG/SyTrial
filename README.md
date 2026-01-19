@@ -53,16 +53,22 @@ analysisData$outcome <- rbinom(n, 1, plogis(linpred))
 
 covariates <- c("age", "male", "x1", "x2")
 
+# Estimate propensity scores with a simple logistic regression
+psModel <- glm(
+  treatment ~ age + male + x1 + x2,
+  data = analysisData,
+  family = binomial()
+)
+analysisData$propensityScore <- as.numeric(stats::predict(psModel, type = "response"))
+
 # Calculate weights (helpers provided by SyTrial)
 analysisData$iptw <- calculateIPTW(
-  data = analysisData,
-  treatment = "treatment",
-  covariates = covariates
+  propensityScores = analysisData$propensityScore,
+  treatment = analysisData$treatment
 )
 analysisData$overlapW <- calculateOverlapWeights(
-  data = analysisData,
-  treatment = "treatment",
-  covariates = covariates
+  propensityScores = analysisData$propensityScore,
+  treatment = analysisData$treatment
 )
 
 # Run causal estimators
@@ -70,25 +76,23 @@ tmleResult <- performTMLE(
   data = analysisData,
   treatment = "treatment",
   outcome = "outcome",
-  covariates = covariates,
-  weights = analysisData$iptw
+  covariates = covariates
 )
 
 gcompResult <- performGComputation(
   data = analysisData,
   treatment = "treatment",
   outcome = "outcome",
-  covariates = covariates,
-  weights = analysisData$overlapW
+  covariates = covariates
 )
 
 tmleResult
 gcompResult
 ```
 
-## Full pipeline requires OMOP CDM + cohort table + outcomeData
+## Full pipeline requires OMOP CDM + cohort IDs + outcomeData
 
-SyTrial’s full synthetic control arm workflow expects cohorts extracted from an OMOP CDM (and typically a cohort table produced by OHDSI tools). Outcomes are commonly passed as an `outcomeData` object/data frame keyed by `subjectId` (and, depending on your design, including time-at-risk information).
+SyTrial’s full synthetic control arm workflow expects cohorts extracted from an OMOP CDM. Outcomes are commonly passed as an `outcomeData` object/data frame keyed by `subjectId` (and, depending on your design, including time-at-risk information).
 
 Example `outcomeData` shape:
 
@@ -100,17 +104,20 @@ outcomeData <- data.frame(
   timeAtRiskStart = as.Date(c("2020-01-01", "2020-01-01", "2020-01-01")),
   timeAtRiskEnd   = as.Date(c("2020-12-31", "2020-12-31", "2020-12-31"))
 )
+```
 
-# Run the full analysis (requires an OMOP CDM connection; signature may vary)
-# See `?runSyTrialAnalysis` for required arguments and defaults.
 ```r
 ## Not run:
-result <- runSyTrialAnalysis(
+# Connect to your OMOP CDM (details depend on your environment)
+syTrialConnection <- createSyTrialConnection(
   connectionDetails = connectionDetails,
-  cdmDatabaseSchema = cdmDatabaseSchema,
-  cohortDatabaseSchema = cohortDatabaseSchema,
-  cohortTable = cohortTable,
-  cohortIds = cohortIds,
+  cdmDatabaseSchema = cdmDatabaseSchema
+)
+
+result <- runSyTrialAnalysis(
+  syTrialConnection = syTrialConnection,
+  treatedCohortId = treatedCohortId,
+  controlCohortId = controlCohortId,
   outcomeData = outcomeData
 )
 ## End(Not run)
