@@ -17,7 +17,6 @@ Description: Constructs synthetic control arms from Real-World Data (RWD) stored
     OHDSI HADES framework.
 License: Apache License 2.0
 Encoding: UTF-8
-LazyData: true
 Depends:
     R (>= 4.0.0)
 Imports:
@@ -34,7 +33,9 @@ Imports:
     survminer (>= 0.4.9),
     ParallelLogger (>= 3.1.0),
     checkmate (>= 2.1.0),
+    cobalt,
     data.table (>= 1.14.0),
+    parallel,
     stats
 Suggests:
     testthat (>= 3.0.0),
@@ -42,7 +43,9 @@ Suggests:
     rmarkdown (>= 2.20),
     xgboost (>= 1.7.0),
     ranger (>= 0.14.0),
-    glmnet (>= 4.1-6)
+    glmnet (>= 4.1-6),
+    MatchIt,
+    withr
 RoxygenNote: 7.3.2
 URL: https://github.com/OdyOSG/SyTrial
 BugReports: https://github.com/OdyOSG/SyTrial/issues
