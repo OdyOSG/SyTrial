@@ -15,14 +15,61 @@
 #' @param outcomeVariable Name of outcome variable
 #' @param timeVariable Name of time variable (for survival outcomes)
 #' @param eventVariable Name of event indicator (for survival outcomes)
+#' @param outcomeData A data frame containing outcomes merged by subjectId.
+#'   Must include \code{subjectId} and the requested \code{outcomeVariable}
+#'   (and \code{timeVariable}/\code{eventVariable} for survival outcomes).
+#'   Note: this function does not currently implement outcome extraction from the
+#'   database; outcomes must be provided via \code{outcomeData}.
 #' @param outputDir Directory for diagnostic outputs
 #'
 #' @return A SyTrialResult object
 #' @export
 #'
 #' @examples
+#' # Minimal runnable example (no DB): demonstrate downstream steps on simulated data
+#' set.seed(1)
+#' n <- 200
+#' x1 <- rnorm(n)
+#' x2 <- rbinom(n, 1, 0.5)
+#' treatment <- rbinom(n, 1, plogis(-0.2 + 0.7 * x1 - 0.4 * x2))
+#' outcome <- rbinom(n, 1, plogis(-1 + 0.8 * treatment + 0.3 * x1))
+#' analysisData <- data.frame(treatment = treatment, outcome = outcome, x1 = x1, x2 = x2)
+#'
+#' ps <- stats::glm(treatment ~ x1 + x2, data = analysisData, family = stats::binomial()) |>
+#'   stats::fitted()
+#'
+#' weights <- calculateOverlapWeights(ps, treatment)
+#'
+#' tmleRes <- performTMLE(
+#'   data = analysisData,
+#'   treatment = "treatment",
+#'   outcome = "outcome",
+#'   covariates = c("x1", "x2"),
+#'   family = "binomial"
+#' )
+#'
+#' gcompRes <- performGComputation(
+#'   data = analysisData,
+#'   treatment = "treatment",
+#'   outcome = "outcome",
+#'   covariates = c("x1", "x2"),
+#'   family = "binomial"
+#' )
+#'
+#' iptwRes <- performIPTWAnalysis(
+#'   data = analysisData,
+#'   treatment = "treatment",
+#'   outcome = "outcome",
+#'   weights = weights,
+#'   family = stats::binomial()
+#' )
+#'
+#' tmleRes$ate
+#' gcompRes$ate
+#' iptwRes$ate
+#'
 #' \dontrun{
-#' # Connect to database
+#' # Full pipeline example (requires DB + cohorts + covariate extraction)
 #' syTrialConn <- createSyTrialConnection(
 #'   connectionDetails = connectionDetails,
 #'   cdmDatabaseSchema = "cdm_synpuf",
@@ -30,7 +77,14 @@
 #'   cohortTable = "cohort"
 #' )
 #'
-#' # Run analysis
+#' # Provide outcome data explicitly (illustrative: replace with real outcomes)
+#' outcomeData <- data.frame(
+#'   subjectId = 1:1000,
+#'   death = rbinom(1000, 1, 0.1),
+#'   time_to_event = rexp(1000, rate = 0.05),
+#'   event_indicator = rbinom(1000, 1, 0.8)
+#' )
+#'
 #' result <- runSyTrialAnalysis(
 #'   syTrialConnection = syTrialConn,
 #'   treatmentCohortId = 1,
@@ -42,14 +96,12 @@
 #'   outcomeVariable = "death",
 #'   timeVariable = "time_to_event",
 #'   eventVariable = "event_indicator",
+#'   outcomeData = outcomeData,
 #'   outputDir = "./sytrial_results"
 #' )
 #'
-#' # View results
 #' print(result)
 #' summary(result)
-#'
-#' # Disconnect
 #' disconnectSyTrial(syTrialConn)
 #' }
 runSyTrialAnalysis <- function(syTrialConnection,
