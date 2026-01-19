@@ -43,6 +43,7 @@ createSyTrialConnection <- function(connectionDetails,
   message("Establishing database connection...")
 
   connection <- DatabaseConnector::connect(connectionDetails)
+  on.exit(DatabaseConnector::disconnect(connection), add = TRUE)
 
   message("Validating OMOP CDM structure...")
 
@@ -78,7 +79,7 @@ createSyTrialConnection <- function(connectionDetails,
     class = "SyTrialConnection"
   )
 
-  on.exit(NULL, add = FALSE)
+  on.exit(NULL, add = TRUE)
   conn
 }
 
