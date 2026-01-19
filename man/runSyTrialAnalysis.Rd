@@ -16,6 +16,7 @@ runSyTrialAnalysis(
   outcomeVariable = NULL,
   timeVariable = NULL,
   eventVariable = NULL,
+  outcomeData = NULL,
   outputDir = "./sytrial_results"
 )
 }
@@ -42,6 +43,8 @@ runSyTrialAnalysis(
 
 \item{eventVariable}{Name of event indicator (for survival outcomes)}
 
+\item{outcomeData}{Optional pre-extracted outcome dataset to use instead of deriving outcomes from the connection/cohorts.}
+
 \item{outputDir}{Directory for diagnostic outputs}
 }
 \value{
@@ -52,6 +55,23 @@ Executes the complete synthetic control arm analysis workflow, from
 cohort definition through causal inference and diagnostics.
 }
 \examples{
+# Minimal example (no database connection):
+outcomeData <- data.frame(
+  subjectId = 1:6,
+  cohortId = c(rep(1, 3), rep(2, 3)),
+  outcome = c(1, 0, 1, 0, 0, 1)
+)
+
+result <- runSyTrialAnalysis(
+  syTrialConnection = NULL,
+  treatmentCohortId = 1,
+  controlCohortId = 2,
+  outcomeType = "binary",
+  outcomeVariable = "outcome",
+  outcomeData = outcomeData,
+  outputDir = tempdir()
+)
+
 \dontrun{
 # Connect to database
 syTrialConn <- createSyTrialConnection(
@@ -73,6 +93,7 @@ result <- runSyTrialAnalysis(
   outcomeVariable = "death",
   timeVariable = "time_to_event",
   eventVariable = "event_indicator",
+  outcomeData = NULL,
   outputDir = "./sytrial_results"
 )
 
