@@ -65,7 +65,7 @@ createSyTrialConnection <- function(connectionDetails,
 
   message("Connection established and validated successfully.")
 
-  structure(
+  conn <- structure(
     list(
       connection = connection,
       connectionDetails = connectionDetails,
@@ -77,6 +77,9 @@ createSyTrialConnection <- function(connectionDetails,
     ),
     class = "SyTrialConnection"
   )
+
+  on.exit(NULL, add = FALSE)
+  conn
 }
 
 #' Disconnect SyTrial Connection
