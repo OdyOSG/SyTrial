@@ -36,12 +36,15 @@ createLovePlot <- function(covariateData,
 
   message("Calculating covariate balance...")
 
-  if (!requireNamespace("cobalt", quietly = TRUE)) {
-    stop("Package 'cobalt' is required for balance diagnostics. Please install it.")
+  if (!requireNamespace("FeatureExtraction", quietly = TRUE)) {
+    stop("Package 'FeatureExtraction' is required to convert covariates to a sparse matrix. Please install it.")
   }
 
-  # Convert covariate data to matrix
-  covMatrix <- as.matrix(covariateData$covariates)
+  # Convert covariate data to sparse matrix (FeatureExtraction long format -> dgCMatrix)
+  covMatrixSparse <- FeatureExtraction::covariateDataToSparseMatrix(covariateData)
+
+  # For diagnostics/plotting we operate on a dense matrix. This can be memory intensive for large data.
+  covMatrix <- as.matrix(covMatrixSparse)
 
   # Calculate SMD before weighting
   smdBefore <- calculateSMD(covMatrix, treatment, weights = NULL)
@@ -53,9 +56,21 @@ createLovePlot <- function(covariateData,
     smdAfter <- NULL
   }
 
-  # Prepare data for plotting
+  # Prepare data for plotting: map matrix columns (covariateId) to covariate names
+  covariateIds <- colnames(covMatrixSparse)
+  if (is.null(covariateIds)) {
+    stop("Covariate matrix has no column names (covariateIds). Cannot map covariates to names.")
+  }
+  covariateIds <- as.integer(covariateIds)
+
+  covariateNameMap <- unique(covariateData$covariateRef[, c("covariateId", "covariateName")])
+  covariateNameMap$covariateId <- as.integer(covariateNameMap$covariateId)
+
+  covariateNames <- covariateNameMap$covariateName[match(covariateIds, covariateNameMap$covariateId)]
+  covariateNames[is.na(covariateNames)] <- as.character(covariateIds[is.na(covariateNames)])
+
   balanceData <- data.frame(
-    covariate = covariateData$covariateRef$covariateName[1:length(smdBefore)],
+    covariate = covariateNames,
     smdBefore = abs(smdBefore),
     stringsAsFactors = FALSE
   )
@@ -142,6 +157,23 @@ createLovePlot <- function(covariateData,
 #'
 #' @return A survminer ggsurvplot object
 #' @export
+#'
+#' @examples
+#' set.seed(1)
+#' n <- 200
+#' simData <- data.frame(
+#'   time = rexp(n, rate = 0.05),
+#'   event = rbinom(n, size = 1, prob = 0.8),
+#'   treatment = rbinom(n, size = 1, prob = 0.5)
+#' )
+#' km <- createKaplanMeierPlot(
+#'   data = simData,
+#'   time = "time",
+#'   event = "event",
+#'   treatment = "treatment",
+#'   title = "Simulated Kaplan-Meier Curves"
+#' )
+#' print(km)
 createKaplanMeierPlot <- function(data,
                                   time,
                                   event,
@@ -164,6 +196,9 @@ createKaplanMeierPlot <- function(data,
   if (!requireNamespace("survminer", quietly = TRUE)) {
     stop("Package 'survminer' is required. Please install it.")
   }
+
+  # Ensure treatment is a 2-level factor so legend labels map deterministically
+  data[[treatment]] <- factor(data[[treatment]], levels = c(0, 1), labels = c("Control", "Treatment"))
 
   # Create survival object
   survFormula <- as.formula(sprintf("survival::Surv(%s, %s) ~ %s", time, event, treatment))
@@ -188,7 +223,7 @@ createKaplanMeierPlot <- function(data,
     xlab = "Time (days)",
     ylab = "Survival Probability",
     legend.title = "Group",
-    legend.labs = c("Synthetic Control", "Treatment")
+    legend.labs = c("Control", "Treatment")
   )
 
   if (!is.null(fileName)) {
@@ -256,6 +291,10 @@ calculateSMD <- function(covariates, treatment, weights = NULL) {
 generateDiagnosticReport <- function(syTrialResult, outputDir = ".") {
 
   checkmate::assertClass(syTrialResult, "SyTrialResult")
+
+  if (!dir.exists(outputDir)) {
+    dir.create(outputDir, recursive = TRUE, showWarnings = FALSE)
+  }
   checkmate::assertDirectoryExists(outputDir)
 
   message("Generating comprehensive diagnostic report...")
