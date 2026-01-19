@@ -111,14 +111,17 @@ outcomeData <- data.frame(
 # Connect to your OMOP CDM (details depend on your environment)
 syTrialConnection <- createSyTrialConnection(
   connectionDetails = connectionDetails,
-  cdmDatabaseSchema = cdmDatabaseSchema
+  cdmDatabaseSchema = cdmDatabaseSchema,
+  cohortDatabaseSchema = cohortDatabaseSchema,
+  cohortTable = cohortTable
 )
 
 result <- runSyTrialAnalysis(
   syTrialConnection = syTrialConnection,
-  treatedCohortId = treatedCohortId,
+  treatmentCohortId = treatmentCohortId,
   controlCohortId = controlCohortId,
-  outcomeData = outcomeData
+  outcomeData = outcomeData,
+  outcomeVariable = outcomeVariable
 )
 ## End(Not run)
 ```
