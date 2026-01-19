@@ -23,6 +23,7 @@
 #'
 #' @examples
 #' \dontrun{
+#' set.seed(1)
 #' controlWithIndex <- imputeControlIndexDates(
 #'   syTrialConnection = syTrialConn,
 #'   treatmentCohortId = 1,
@@ -37,7 +38,8 @@ imputeControlIndexDates <- function(syTrialConnection,
                                     imputationMethod = "risk_set_sampling",
                                     matchingWindow = 30,
                                     minObservationPrior = 365,
-                                    maxControlsPerTreated = 5) {
+                                    maxControlsPerTreated = 5,
+                                    seed = NULL) {
 
   checkmate::assertClass(syTrialConnection, "SyTrialConnection")
   checkmate::assertInt(treatmentCohortId)
@@ -45,6 +47,13 @@ imputeControlIndexDates <- function(syTrialConnection,
   checkmate::assertChoice(imputationMethod,
                           c("calendar_matching", "time_to_event",
                             "risk_set_sampling", "sequential_trial"))
+  checkmate::assertNumber(matchingWindow, lower = 1)
+  checkmate::assertNumber(minObservationPrior, lower = 1)
+  checkmate::assertInt(maxControlsPerTreated, lower = 1)
+  checkmate::assert(
+    checkmate::checkNULL(seed) ||
+      checkmate::checkInt(seed)
+  )
 
   message(sprintf("Imputing index dates using method: %s", imputationMethod))
 
@@ -53,6 +62,10 @@ imputeControlIndexDates <- function(syTrialConnection,
 
   # Extract potential control pool
   controlPool <- extractControlPool(syTrialConnection, controlCohortId, minObservationPrior)
+
+  if (!is.null(seed)) {
+    set.seed(seed)
+  }
 
   # Apply imputation strategy
   imputedControls <- switch(
@@ -101,6 +114,8 @@ extractTreatmentCohort <- function(syTrialConnection, treatmentCohortId) {
   treatmentData <- DatabaseConnector::querySql(syTrialConnection$connection, sql)
   colnames(treatmentData) <- SqlRender::snakeCaseToCamelCase(colnames(treatmentData))
 
+  treatmentData$indexDate <- as.Date(treatmentData$indexDate)
+
   return(treatmentData)
 }
 
@@ -140,6 +155,11 @@ extractControlPool <- function(syTrialConnection, controlCohortId, minObservatio
   controlPool <- DatabaseConnector::querySql(syTrialConnection$connection, sql)
   colnames(controlPool) <- SqlRender::snakeCaseToCamelCase(colnames(controlPool))
 
+  controlPool$earliestEligibleDate <- as.Date(controlPool$earliestEligibleDate)
+  controlPool$latestEligibleDate <- as.Date(controlPool$latestEligibleDate)
+  controlPool$observationPeriodStartDate <- as.Date(controlPool$observationPeriodStartDate)
+  controlPool$observationPeriodEndDate <- as.Date(controlPool$observationPeriodEndDate)
+
   return(controlPool)
 }
 
@@ -156,7 +176,7 @@ riskSetSampling <- function(treatmentData, controlPool, maxControlsPerTreated) {
     eligibleControls <- controlPool[
       controlPool$earliestEligibleDate <= treatmentIndexDate &
         controlPool$latestEligibleDate >= treatmentIndexDate,
-    ]
+    , drop = FALSE]
 
     if (nrow(eligibleControls) > 0) {
       # Sample up to maxControlsPerTreated
@@ -245,7 +265,7 @@ sequentialTrialEmulation <- function(syTrialConnection, treatmentData, controlPo
     eligibleControls <- controlPool[
       controlPool$earliestEligibleDate <= trialDate &
         controlPool$latestEligibleDate >= trialDate,
-    ]
+    , drop = FALSE]
 
     if (nrow(eligibleControls) > 0) {
       eligibleControls$imputedIndexDate <- trialDate
